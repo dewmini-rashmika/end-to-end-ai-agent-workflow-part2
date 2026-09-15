@@ -1,0 +1,28 @@
+# Shared Dockerfile for all MCP servers.
+# Build arg MCP_MODULE selects which server to run.
+# Usage: docker build --build-arg MCP_MODULE=flight_mcp -t tripmate-mcp-flight .
+
+FROM python:3.12-slim
+
+ARG MCP_MODULE=flight_mcp
+ENV MCP_MODULE=${MCP_MODULE}
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN addgroup --system mcpgroup && adduser --system --ingroup mcpgroup mcpuser
+RUN chown -R mcpuser:mcpgroup /app
+USER mcpuser
+
+# Port is set per-service in docker-compose
+EXPOSE 8001
+
+CMD python -m app.mcp_servers.${MCP_MODULE}
