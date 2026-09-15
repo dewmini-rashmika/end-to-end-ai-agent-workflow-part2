@@ -1,0 +1,195 @@
+name: tripmate-ai
+
+# ── Shared env snippet ────────────────────────────────────────────────────────
+x-backend-env: &backend-env
+  env_file: ./backend/.env
+  environment:
+    DATABASE_URL: postgresql+asyncpg://tripmate:tripmate@postgres:5432/tripmate
+    REDIS_URL: redis://redis:6379/0
+    CHROMA_HOST: chromadb
+    CHROMA_PORT: "8005"
+    MCP_FLIGHT_PORT: "8001"
+    MCP_HOTEL_PORT: "8002"
+    MCP_WEATHER_PORT: "8003"
+    MCP_BUDGET_PORT: "8004"
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tripmate
+      POSTGRES_PASSWORD: tripmate
+      POSTGRES_DB: tripmate
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tripmate"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── ChromaDB ────────────────────────────────────────────────────────────────
+  chromadb:
+    image: chromadb/chroma:0.6.3
+    restart: unless-stopped
+    environment:
+      CHROMA_SERVER_AUTHN_CREDENTIALS: ""
+      CHROMA_SERVER_AUTHN_PROVIDER: ""
+    volumes:
+      - chroma_data:/chroma/chroma
+    ports:
+      - "8005:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── MCP: Flight (AviationStack) ─────────────────────────────────────────────
+  mcp-flight:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.mcp
+      args:
+        MCP_MODULE: flight_mcp
+    restart: unless-stopped
+    <<: *backend-env
+    environment:
+      MCP_FLIGHT_PORT: "8001"
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── MCP: Hotel (Tavily) ─────────────────────────────────────────────────────
+  mcp-hotel:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.mcp
+      args:
+        MCP_MODULE: hotel_mcp
+    restart: unless-stopped
+    <<: *backend-env
+    environment:
+      MCP_HOTEL_PORT: "8002"
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── MCP: Weather (OpenWeatherMap) ───────────────────────────────────────────
+  mcp-weather:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.mcp
+      args:
+        MCP_MODULE: weather_mcp
+    restart: unless-stopped
+    <<: *backend-env
+    environment:
+      MCP_WEATHER_PORT: "8003"
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── MCP: Budget ─────────────────────────────────────────────────────────────
+  mcp-budget:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.mcp
+      args:
+        MCP_MODULE: budget_mcp
+    restart: unless-stopped
+    <<: *backend-env
+    environment:
+      MCP_BUDGET_PORT: "8004"
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Backend API ─────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *backend-env
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+      mcp-flight:
+        condition: service_started
+      mcp-hotel:
+        condition: service_started
+      mcp-weather:
+        condition: service_started
+      mcp-budget:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  # ── Frontend ────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── DB Migrations (one-shot) ────────────────────────────────────────────────
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: alembic upgrade head
+    <<: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:

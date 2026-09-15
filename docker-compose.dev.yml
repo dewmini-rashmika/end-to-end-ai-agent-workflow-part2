@@ -1,0 +1,57 @@
+# Development override — hot-reload, exposed ports, no prod optimisations
+name: tripmate-ai-dev
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+    volumes:
+      - ./backend:/app
+    environment:
+      APP_ENV: development
+      DEBUG: "true"
+      LOG_FORMAT: text
+    ports:
+      - "8000:8000"
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000/api/v1
+    ports:
+      - "5173:5173"
+
+  mcp-flight:
+    command: python -m app.mcp_servers.flight_mcp
+    volumes:
+      - ./backend:/app
+    environment:
+      APP_ENV: development
+
+  mcp-hotel:
+    command: python -m app.mcp_servers.hotel_mcp
+    volumes:
+      - ./backend:/app
+    environment:
+      APP_ENV: development
+
+  mcp-weather:
+    command: python -m app.mcp_servers.weather_mcp
+    volumes:
+      - ./backend:/app
+    environment:
+      APP_ENV: development
+
+  mcp-budget:
+    command: python -m app.mcp_servers.budget_mcp
+    volumes:
+      - ./backend:/app
+    environment:
+      APP_ENV: development

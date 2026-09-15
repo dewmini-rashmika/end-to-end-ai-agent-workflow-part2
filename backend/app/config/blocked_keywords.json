@@ -1,0 +1,38 @@
+{
+  "blocked_patterns": [
+    "ignore previous instructions",
+    "ignore all instructions",
+    "you are now",
+    "act as",
+    "jailbreak",
+    "bypass safety",
+    "forget your training",
+    "pretend you are",
+    "disregard your",
+    "override your",
+    "system prompt",
+    "base64",
+    "sudo",
+    "rm -rf",
+    "drop table",
+    "exec(",
+    "eval("
+  ],
+  "blocked_categories": [
+    "violence",
+    "hate_speech",
+    "adult_content",
+    "self_harm",
+    "illegal_activity"
+  ],
+  "travel_off_topic_signals": [
+    "write code",
+    "debug my",
+    "stock price",
+    "medical diagnosis",
+    "legal advice",
+    "hack",
+    "password",
+    "credit card number"
+  ]
+}
